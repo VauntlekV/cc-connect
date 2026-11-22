@@ -46,9 +46,12 @@ type Agent struct {
 	// handshake so that future PermissionModes() calls can reflect the
 	// actual modes this specific ACP agent offers (rather than a
 	// hard-coded fallback that may not match).
-	modesMu       sync.RWMutex
-	modesCache    []core.PermissionModeInfo
-	modesCurrent  string
+	modesMu      sync.RWMutex
+	modesCache   []core.PermissionModeInfo
+	modesCurrent string
+
+	model       string             // LOCAL PATCH acp-model
+	modelsCache []core.ModelOption // LOCAL PATCH acp-model
 
 	mu sync.RWMutex
 }
@@ -94,17 +97,19 @@ func New(opts map[string]any) (core.Agent, error) {
 	}
 	mode, _ := opts["mode"].(string)
 	mode = strings.TrimSpace(mode)
+	model, _ := opts["model"].(string)
 
 	return &Agent{
-		workDir:     workDir,
+		workDir:      workDir,
 		cmd:          cmdStr,
 		cliExtraArgs: cliExtraArgs,
-		args:        args,
-		staticEnv:   staticEnv,
-		extraEnv:    extra,
-		authMethod:  authMethod,
-		displayName: displayName,
-		mode:        mode,
+		args:         args,
+		staticEnv:    staticEnv,
+		extraEnv:     extra,
+		authMethod:   authMethod,
+		displayName:  displayName,
+		mode:         mode,
+		model:        strings.TrimSpace(model),
 	}, nil
 }
 
@@ -230,6 +235,7 @@ func (a *Agent) StartSession(ctx context.Context, sessionID string) (core.AgentS
 	workDir := a.workDir
 	authMethod := a.authMethod
 	pendingMode := a.mode
+	pendingModel := a.model
 	extra := append([]string(nil), a.extraEnv...)
 	extra = append(extra, a.sessionEnv...)
 	a.mu.RUnlock()
@@ -242,6 +248,7 @@ func (a *Agent) StartSession(ctx context.Context, sessionID string) (core.AgentS
 		resumeSessionID: sessionID,
 		authMethod:      authMethod,
 		initialMode:     pendingMode,
+		initialModel:    pendingModel,
 		callbacks:       a,
 	})
 }

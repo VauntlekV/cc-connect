@@ -85,6 +85,7 @@ type acpSessionConfig struct {
 	resumeSessionID string
 	authMethod      string
 	initialMode     string           // if non-empty, applied via session/set_mode after session/new
+	initialModel    string           // LOCAL PATCH acp-model: applied via session/set_model
 	callbacks       sessionCallbacks // may be nil
 }
 
@@ -167,6 +168,8 @@ func newACPSession(ctx context.Context, cfg acpSessionConfig) (*acpSession, erro
 			)
 		}
 	}
+
+	s.applyInitialModel(cfg.initialModel)
 
 	return s, nil
 }
@@ -255,8 +258,9 @@ func (s *acpSession) handshake(resumeSessionID string, authMethod string) error 
 					"method", resumeMethod, "error", err)
 			} else {
 				var rr struct {
-					SessionID string         `json:"sessionId"`
-					Modes     *acpModesBlock `json:"modes"`
+					SessionID string          `json:"sessionId"`
+					Modes     *acpModesBlock  `json:"modes"`
+					Models    *acpModelsBlock `json:"models"`
 				}
 				if uerr := json.Unmarshal(resumeRes, &rr); uerr != nil {
 					// The body is allowed to be a configOptions-only
@@ -279,6 +283,7 @@ func (s *acpSession) handshake(resumeSessionID string, authMethod string) error 
 				}
 				s.setACPSessionID(resumedID)
 				s.absorbModes(rr.Modes)
+				s.absorbModels(rr.Models)
 				return nil
 			}
 		}
@@ -293,8 +298,9 @@ func (s *acpSession) handshake(resumeSessionID string, authMethod string) error 
 		return fmt.Errorf("acp: session/new: %w", err)
 	}
 	var sn struct {
-		SessionID string         `json:"sessionId"`
-		Modes     *acpModesBlock `json:"modes"`
+		SessionID string          `json:"sessionId"`
+		Modes     *acpModesBlock  `json:"modes"`
+		Models    *acpModelsBlock `json:"models"`
 	}
 	if err := json.Unmarshal(newRes, &sn); err != nil {
 		return fmt.Errorf("acp: parse session/new: %w", err)
@@ -304,6 +310,7 @@ func (s *acpSession) handshake(resumeSessionID string, authMethod string) error 
 	}
 	s.setACPSessionID(sn.SessionID)
 	s.absorbModes(sn.Modes)
+	s.absorbModels(sn.Models)
 	return nil
 }
 
