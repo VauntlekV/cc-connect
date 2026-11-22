@@ -302,6 +302,11 @@ func (as *antigravitySession) readLoop(ctx context.Context, cmd *exec.Cmd, stdou
 			continue
 		}
 		for _, event := range events {
+			// LOCAL PATCH agy-resume: remember the conversation ID from the
+			// stream so the next Send passes --conversation.
+			if event.SessionID != "" {
+				as.chatID.Store(event.SessionID)
+			}
 			select {
 			case as.events <- event:
 			case <-as.ctx.Done():
