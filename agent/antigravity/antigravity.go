@@ -136,6 +136,10 @@ func (a *Agent) AvailableModels(ctx context.Context) []core.ModelOption {
 	if models := a.configuredModels(); len(models) > 0 {
 		return models
 	}
+	// LOCAL PATCH (agy-model): ask the agy CLI itself for the account's real model list.
+	if models := a.fetchModelsFromCLI(ctx); len(models) > 0 {
+		return models
+	}
 	if models := a.fetchModelsFromAPI(ctx); len(models) > 0 {
 		return models
 	}
@@ -566,4 +570,52 @@ func listAntigravitySessions(workDir string) ([]core.AgentSessionInfo, error) {
 	})
 
 	return sessions, nil
+}
+
+// LOCAL PATCH (agy-model): cache of `agy models` output.
+var (
+	cliModelsMu    sync.Mutex
+	cliModelsCache []core.ModelOption
+	cliModelsAt    time.Time
+)
+
+// fetchModelsFromCLI runs `agy models` (official CLI, its own auth) and parses
+// "name<TAB>description" lines. Results are cached for 10 minutes.
+func (a *Agent) fetchModelsFromCLI(ctx context.Context) []core.ModelOption {
+	cliModelsMu.Lock()
+	defer cliModelsMu.Unlock()
+	if len(cliModelsCache) > 0 && time.Since(cliModelsAt) < 10*time.Minute {
+		return cliModelsCache
+	}
+	a.mu.RLock()
+	bin := a.cmd
+	a.mu.RUnlock()
+	if bin == "" {
+		bin = "agy"
+	}
+	cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(cctx, bin, "models").Output()
+	if err != nil {
+		slog.Warn("antigravity: `agy models` failed", "error", err)
+		return nil
+	}
+	models := parseAgyModels(string(out))
+	if len(models) > 0 {
+		cliModelsCache, cliModelsAt = models, time.Now()
+	}
+	return models
+}
+
+func parseAgyModels(out string) []core.ModelOption {
+	var models []core.ModelOption
+	for _, line := range strings.Split(out, "\n") {
+		name, desc, ok := strings.Cut(strings.TrimSpace(line), "\t")
+		name = strings.TrimSpace(name)
+		if !ok || name == "" || strings.ContainsAny(name, " \t") {
+			continue
+		}
+		models = append(models, core.ModelOption{Name: name, Desc: strings.TrimSpace(desc)})
+	}
+	return models
 }

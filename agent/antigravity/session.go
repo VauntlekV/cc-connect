@@ -150,9 +150,6 @@ func (as *antigravitySession) Send(prompt string, messageID string, images []cor
 		agyConfigDir = as.permissionBridge.AgyConfigDir()
 	}
 	args := as.buildAntigravityArgs(chatID, isResume, as.mode, agyConfigDir, fullPrompt)
-	if strings.TrimSpace(as.model) != "" {
-		slog.Warn("antigravitySession: model is configured but ignored because agy does not support --model yet", "model", as.model)
-	}
 
 	var ctx context.Context
 	var cancel context.CancelFunc
@@ -223,6 +220,10 @@ func (as *antigravitySession) buildAntigravityArgs(chatID string, isResume bool,
 		args = append(args, "--dangerously-skip-permissions")
 	case "plan":
 		args = append(args, "--sandbox")
+	}
+	// LOCAL PATCH (agy-model): agy >= 1.5 supports --model; upstream still drops it.
+	if model := strings.TrimSpace(as.model); model != "" {
+		args = append(args, "--model", model)
 	}
 	args = append(args, "-p", fullPrompt)
 	return args
