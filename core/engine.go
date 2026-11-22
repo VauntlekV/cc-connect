@@ -16839,11 +16839,21 @@ func (e *Engine) relayContextForSourceSessionKey(fromProject, sourceSessionKey s
 // dedicated relay session, sends the message to the agent, and blocks until
 // the complete response is collected (or the relay context times out).
 func (e *Engine) HandleRelay(ctx context.Context, fromProject, sourceSessionKey, message string) (string, error) {
+	return e.HandleRelayOpts(ctx, fromProject, sourceSessionKey, message, false)
+}
+
+// HandleRelayOpts is HandleRelay with LOCAL PATCH (relay-new-session):
+// newSession drops the stored relay agent session so this turn starts clean.
+func (e *Engine) HandleRelayOpts(ctx context.Context, fromProject, sourceSessionKey, message string, newSession bool) (string, error) {
 	agent, sessions, relaySessionKey, err := e.relayContextForSourceSessionKey(fromProject, sourceSessionKey)
 	if err != nil {
 		return "", err
 	}
 	session := sessions.GetOrCreateActive(relaySessionKey)
+	if newSession && session.GetAgentSessionID() != "" {
+		session.SetAgentSessionID("", agent.Name())
+		sessions.Save()
+	}
 
 	if inj, ok := agent.(SessionEnvInjector); ok {
 		envVars := []string{
