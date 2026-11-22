@@ -558,6 +558,36 @@ func (p *Platform) handleMessage(ctx context.Context, msg *models.Message) {
 		return
 	}
 
+	if msg.Sticker != nil {
+		// Animated (tgs) and video (webm) stickers can't be viewed as images; send their thumbnail.
+		fileID := msg.Sticker.FileID
+		if msg.Sticker.IsAnimated || msg.Sticker.IsVideo {
+			fileID = ""
+			if msg.Sticker.Thumbnail != nil {
+				fileID = msg.Sticker.Thumbnail.FileID
+			}
+		}
+		var images []core.ImageAttachment
+		if fileID != "" {
+			imgData, err := p.downloadFile(fileID)
+			if err != nil {
+				slog.Error("telegram: download sticker failed", "error", err)
+			} else {
+				images = []core.ImageAttachment{{MimeType: http.DetectContentType(imgData), Data: imgData}}
+			}
+		}
+		p.dispatchMessage(&core.Message{
+			SessionKey: sessionKey, Platform: "telegram",
+			UserID: userID, UserName: userName, ChatName: chatName,
+			Content:    strings.TrimSpace("[贴纸 " + msg.Sticker.Emoji + "]"),
+			MessageID:  strconv.Itoa(msg.ID),
+			ChannelKey: channelKey,
+			Images:     images,
+			ReplyCtx:   rctx,
+		}, msg)
+		return
+	}
+
 	if msg.Location != nil {
 		slog.Info("telegram: location received", "user", userName, "latitude", msg.Location.Latitude, "longitude", msg.Location.Longitude)
 		p.dispatchMessage(&core.Message{
