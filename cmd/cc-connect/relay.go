@@ -29,6 +29,7 @@ func runRelay(args []string) {
 func runRelaySend(args []string) {
 	var from, to, sessionKey, message, dataDir string
 	resume := false // LOCAL PATCH (relay-new-session): fresh session unless --resume
+	async := false  // LOCAL PATCH (relay-async): return immediately, reply arrives as a new message
 
 	var positional []string
 	for i := 0; i < len(args); i++ {
@@ -60,6 +61,8 @@ func runRelaySend(args []string) {
 			}
 		case "--resume", "-r":
 			resume = true
+		case "--async", "-a":
+			async = true
 		case "--help", "-h":
 			printRelaySendUsage()
 			return
@@ -105,6 +108,7 @@ func runRelaySend(args []string) {
 		"session_key": sessionKey,
 		"message":     message,
 		"new_session": !resume,
+		"async":       async,
 	})
 
 	resp, err := apiPost(sockPath, "/relay/send", payload)
@@ -150,6 +154,7 @@ Options:
   -s, --session-key <key>    Session key (auto-detected from CC_SESSION_KEY env)
   -m, --message <text>       Message to send
   -r, --resume               Continue the previous relay session (default: start fresh)
+  -a, --async                Don't wait: return at once; the reply is delivered to your session as a new message
       --data-dir <path>      Data directory (default: ~/.cc-connect)
   -h, --help                 Show this help
 

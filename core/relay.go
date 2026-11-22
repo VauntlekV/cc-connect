@@ -196,6 +196,9 @@ type RelayRequest struct {
 	Message    string `json:"message"`
 	// LOCAL PATCH (relay-new-session): start a fresh agent session for this relay turn.
 	NewSession bool `json:"new_session,omitempty"`
+	// LOCAL PATCH (relay-async): return immediately; deliver the reply to the
+	// caller's session as a new message once the target finishes.
+	Async bool `json:"async,omitempty"`
 }
 
 // RelayResponse is the result of a relay send.
@@ -250,6 +253,14 @@ func (rm *RelayManager) Send(ctx context.Context, req RelayRequest) (*RelayRespo
 	if sourceEngine != nil && visibility != RelayVisibilityNone {
 		label := relayVisibilityRequestLabel(visibility, fromName, toName, req.Message)
 		rm.sendToGroup(ctx, sourceEngine, platform, groupSessionKey, label)
+	}
+
+	if req.Async {
+		if sourceEngine == nil {
+			return nil, fmt.Errorf("relay: source engine %q not found, async reply has nowhere to go", req.From)
+		}
+		go rm.runAsync(req, targetEngine, sourceEngine, platform, groupSessionKey, toName, visibility)
+		return &RelayResponse{Response: fmt.Sprintf("已异步转交给 %s。它完成后，回复会作为一条新消息发到你当前的会话；现在不用等，结束本轮即可。", toName)}, nil
 	}
 
 	// Execute relay: inject message into target engine and collect response
@@ -423,5 +434,47 @@ func (rm *RelayManager) load() {
 	if bindings != nil {
 		rm.bindings = bindings
 		slog.Info("relay: loaded bindings", "count", len(bindings))
+	}
+}
+
+// LOCAL PATCH (relay-async): run the relay in the background and hand the
+// reply back to the caller as a timer-style prompt in its own session.
+func (rm *RelayManager) runAsync(req RelayRequest, targetEngine, sourceEngine *Engine, platform, groupSessionKey, toName, visibility string) {
+	relayCtx, cancel := rm.relayContext(context.Background())
+	response, err := targetEngine.HandleRelayOpts(relayCtx, req.From, req.SessionKey, req.Message, req.NewSession)
+	cancel()
+
+	var prompt string
+	if err != nil {
+		slog.Warn("relay async: target failed", "to", req.To, "error", err)
+		prompt = fmt.Sprintf("[relay 回信] 你之前异步转交给 %s 的任务失败了：%v\n\n原请求：\n%s", toName, err, truncateRelay(req.Message, 500))
+	} else {
+		if visibility != RelayVisibilityNone {
+			rm.sendToGroup(context.Background(), targetEngine, platform, groupSessionKey, relayVisibilityResponseLabel(visibility, toName, response))
+		}
+		prompt = fmt.Sprintf("[relay 回信] %s 已完成你之前异步转交的任务。请根据它的回复继续，并把结果告诉机主。\n\n原请求：\n%s\n\n%s 的回复：\n%s", toName, truncateRelay(req.Message, 500), toName, response)
+	}
+
+	silent := true
+	deadline := time.Now().Add(time.Hour)
+	for {
+		job := &TimerJob{
+			ID:          fmt.Sprintf("relay-%d", time.Now().UnixNano()),
+			Project:     req.From,
+			SessionKey:  req.SessionKey,
+			Prompt:      prompt,
+			Description: "relay 回信：" + toName,
+			Silent:      &silent,
+			SessionMode: "reuse", // back into the caller's own conversation, not a side session
+		}
+		err := sourceEngine.ExecuteTimerJob(job)
+		if err == nil {
+			return
+		}
+		if !strings.Contains(err.Error(), "is busy") || time.Now().After(deadline) {
+			slog.Error("relay async: deliver reply failed", "from", req.From, "to", req.To, "error", err)
+			return
+		}
+		time.Sleep(5 * time.Second)
 	}
 }

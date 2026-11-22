@@ -4566,6 +4566,9 @@ This sends a message to the target bot and waits for its response (printed to st
 The conversation is visible in the group chat.
 Each relay starts a fresh session on the target bot, so include all needed context in the message.
 Add --resume only to continue the previous relay conversation with that bot.
+For long tasks (reviews, research, anything over ~2 minutes) add --async: the command returns at once,
+you should end your turn, and the target's reply arrives later in your session as a new message
+starting with "[relay 回信]" — continue the work from there.
 
 Environment variables CC_PROJECT and CC_SESSION_KEY are already set, so the relay knows which group chat to use.`,
 		LangChinese: `### Bot 之间转发 (relay)
@@ -4580,6 +4583,8 @@ Environment variables CC_PROJECT and CC_SESSION_KEY are already set, so the rela
 会话在群聊里可见。
 每次 relay 默认在目标 bot 上新开会话,消息里要交代清楚所需背景。
 只有要接着上次 relay 对话继续时才加 --resume。
+耗时长的任务（评审、调研等，预计超过 2 分钟）加 --async：命令立刻返回，你直接结束本轮；
+对方完成后，回复会以「[relay 回信]」开头的新消息发到你的会话，届时接着处理。
 
 环境变量 CC_PROJECT 和 CC_SESSION_KEY 已经设置好,relay 知道用哪个群聊。`,
 	},
