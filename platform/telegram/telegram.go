@@ -131,6 +131,8 @@ type Platform struct {
 	albums           map[string]*mediaGroupBuffer
 	mediaGroupWindow time.Duration // 0 = defaultMediaGroupWindow
 	stickers         map[string]*pendingSticker
+	forwards         map[string]*pendingForward
+	forwardWindow    time.Duration // 0 = no holding (tests); New sets defaultForwardWindow
 }
 
 const (
@@ -188,6 +190,7 @@ func New(opts map[string]any) (core.Platform, error) {
 	}
 
 	return &Platform{
+		forwardWindow:         defaultForwardWindow,
 		token:                 token,
 		allowFrom:             allowFrom,
 		groupReplyAll:         groupReplyAll,
@@ -454,7 +457,8 @@ func (p *Platform) handleMessage(ctx context.Context, msg *models.Message) {
 
 	if isGroup && !p.groupReplyAll {
 		slog.Debug("telegram: checking group message", "text", msg.Text, "is_command", isCommand(msg))
-		if !p.isDirectedAtBot(msg) {
+		// LOCAL PATCH tg-forward-merge: forwards that follow a held @mention join it.
+		if !p.isDirectedAtBot(msg) && !(msg.ForwardOrigin != nil && p.hasPendingForward(sessionKey+"|"+userID)) {
 			return
 		}
 	}
@@ -652,7 +656,7 @@ func (p *Platform) dispatchMessage(msg *core.Message, tgMsg *models.Message) {
 		return
 	}
 	p.mergeSticker(msg)
-	handler(p, msg)
+	p.holdForward(msg, tgMsg.ForwardOrigin, handler)
 }
 
 func (p *Platform) messageHandler() core.MessageHandler {
