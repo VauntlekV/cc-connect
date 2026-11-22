@@ -46,15 +46,27 @@ func newRateLimitRetryBot(b telegramBot) telegramBot {
 }
 
 func (b *rateLimitRetryBot) SendMessage(ctx context.Context, params *tgbot.SendMessageParams) (*models.Message, error) {
+	// LOCAL PATCH (no-link-preview): never attach web page previews.
+	if params.LinkPreviewOptions == nil {
+		params.LinkPreviewOptions = noLinkPreview()
+	}
 	return retryOnRateLimit(ctx, "sendMessage", func() (*models.Message, error) {
 		return b.telegramBot.SendMessage(ctx, params)
 	})
 }
 
 func (b *rateLimitRetryBot) EditMessageText(ctx context.Context, params *tgbot.EditMessageTextParams) (*models.Message, error) {
+	if params.LinkPreviewOptions == nil {
+		params.LinkPreviewOptions = noLinkPreview()
+	}
 	return retryOnRateLimit(ctx, "editMessageText", func() (*models.Message, error) {
 		return b.telegramBot.EditMessageText(ctx, params)
 	})
+}
+
+func noLinkPreview() *models.LinkPreviewOptions {
+	disabled := true
+	return &models.LinkPreviewOptions{IsDisabled: &disabled}
 }
 
 func retryOnRateLimit[T any](ctx context.Context, method string, call func() (T, error)) (T, error) {
