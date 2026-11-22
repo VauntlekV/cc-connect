@@ -131,6 +131,7 @@ type Platform struct {
 	albumMu          sync.Mutex
 	albums           map[string]*mediaGroupBuffer
 	mediaGroupWindow time.Duration // 0 = defaultMediaGroupWindow
+	stickers         map[string]*pendingSticker
 }
 
 const (
@@ -628,6 +629,12 @@ func (p *Platform) dispatchMessage(msg *core.Message, tgMsg *models.Message) {
 	if handler == nil {
 		return
 	}
+	if tgMsg.Sticker != nil {
+		logSticker(tgMsg.Sticker)
+		p.holdSticker(msg, handler)
+		return
+	}
+	p.mergeSticker(msg)
 	handler(p, msg)
 }
 
