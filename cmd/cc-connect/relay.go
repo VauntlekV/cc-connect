@@ -28,6 +28,7 @@ func runRelay(args []string) {
 
 func runRelaySend(args []string) {
 	var from, to, sessionKey, message, dataDir string
+	resume := false // LOCAL PATCH (relay-new-session): fresh session unless --resume
 
 	var positional []string
 	for i := 0; i < len(args); i++ {
@@ -57,6 +58,8 @@ func runRelaySend(args []string) {
 				i++
 				dataDir = args[i]
 			}
+		case "--resume", "-r":
+			resume = true
 		case "--help", "-h":
 			printRelaySendUsage()
 			return
@@ -96,11 +99,12 @@ func runRelaySend(args []string) {
 		os.Exit(1)
 	}
 
-	payload, _ := json.Marshal(map[string]string{
+	payload, _ := json.Marshal(map[string]any{
 		"from":        from,
 		"to":          to,
 		"session_key": sessionKey,
 		"message":     message,
+		"new_session": !resume,
 	})
 
 	resp, err := apiPost(sockPath, "/relay/send", payload)
@@ -145,6 +149,7 @@ Options:
   -t, --to <project>         Target bot project name
   -s, --session-key <key>    Session key (auto-detected from CC_SESSION_KEY env)
   -m, --message <text>       Message to send
+  -r, --resume               Continue the previous relay session (default: start fresh)
       --data-dir <path>      Data directory (default: ~/.cc-connect)
   -h, --help                 Show this help
 

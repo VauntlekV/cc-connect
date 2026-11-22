@@ -4539,7 +4539,9 @@ IMPORTANT: <target_project> must be the EXACT project name from the /bind comman
 Do NOT guess or modify the name — use it exactly as shown (e.g. "gemini", not "gemini-bot").
 
 This sends a message to the target bot and waits for its response (printed to stdout).
-The conversation is visible in the group chat and each bot maintains its own relay session.
+The conversation is visible in the group chat.
+Each relay starts a fresh session on the target bot, so include all needed context in the message.
+Add --resume only to continue the previous relay conversation with that bot.
 
 Environment variables CC_PROJECT and CC_SESSION_KEY are already set, so the relay knows which group chat to use.`,
 		LangChinese: `### Bot 之间转发 (relay)
@@ -4551,7 +4553,9 @@ Environment variables CC_PROJECT and CC_SESSION_KEY are already set, so the rela
 不要猜测或修改名字 —— 完全照搬显示值(例如 "gemini" 而不是 "gemini-bot")。
 
 这会把消息发给目标 bot 并等待它的回复(打印到 stdout)。
-会话在群聊里可见,每个 bot 维护自己的 relay 会话。
+会话在群聊里可见。
+每次 relay 默认在目标 bot 上新开会话,消息里要交代清楚所需背景。
+只有要接着上次 relay 对话继续时才加 --resume。
 
 环境变量 CC_PROJECT 和 CC_SESSION_KEY 已经设置好,relay 知道用哪个群聊。`,
 	},

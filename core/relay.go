@@ -194,6 +194,8 @@ type RelayRequest struct {
 	To         string `json:"to"`          // target project name
 	SessionKey string `json:"session_key"` // source session key (contains platform + chatID)
 	Message    string `json:"message"`
+	// LOCAL PATCH (relay-new-session): start a fresh agent session for this relay turn.
+	NewSession bool `json:"new_session,omitempty"`
 }
 
 // RelayResponse is the result of a relay send.
@@ -254,7 +256,7 @@ func (rm *RelayManager) Send(ctx context.Context, req RelayRequest) (*RelayRespo
 	relayCtx, cancel := rm.relayContext(ctx)
 	defer cancel()
 
-	response, err := targetEngine.HandleRelay(relayCtx, req.From, req.SessionKey, req.Message)
+	response, err := targetEngine.HandleRelayOpts(relayCtx, req.From, req.SessionKey, req.Message, req.NewSession)
 	if err != nil {
 		return nil, fmt.Errorf("relay: %w", err)
 	}
