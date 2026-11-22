@@ -595,7 +595,7 @@ func (p *Platform) handleMessage(ctx context.Context, msg *models.Message) {
 func (p *Platform) dispatchMessage(msg *core.Message, tgMsg *models.Message) {
 	// Enrich with platform-specific context (reply quotes, location text, etc.)
 	var extras []string
-	if replyText := enrichReplyContent(tgMsg); replyText != "" {
+	if replyText := enrichReplyContent(tgMsg, p.botUsername()); replyText != "" {
 		extras = append(extras, replyText)
 	}
 	if locText := enrichLocation(msg); locText != "" {

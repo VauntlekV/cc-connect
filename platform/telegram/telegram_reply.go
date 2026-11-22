@@ -10,7 +10,12 @@ import (
 // enrichReplyContent extracts the quoted/original message from a Telegram reply
 // and formats it so the AI agent can see the context of what the user is replying to.
 // Returns the enriched content string, or empty string if this is not a reply.
-func enrichReplyContent(msg *models.Message) string {
+//
+// LOCAL PATCH telegram-reply-trim: when the user selected part of the message
+// (Telegram quote), only that part is included; when replying to the bot's own
+// message without a selection, only the first replyOwnMaxRunes runes are kept,
+// enough to identify which message it was without echoing it in full.
+func enrichReplyContent(msg *models.Message, selfUsername string) string {
 	if msg.ReplyToMessage == nil {
 		return ""
 	}
@@ -18,11 +23,16 @@ func enrichReplyContent(msg *models.Message) string {
 	original := msg.ReplyToMessage
 	var parts []string
 
+	fromSelf := selfUsername != "" && original.From != nil &&
+		strings.EqualFold(original.From.Username, selfUsername)
+
 	// Extract text content from the original message
-	if original.Text != "" {
-		parts = append(parts, original.Text)
+	if msg.Quote != nil && strings.TrimSpace(msg.Quote.Text) != "" {
+		parts = append(parts, "「"+msg.Quote.Text+"」")
+	} else if original.Text != "" {
+		parts = append(parts, trimOwnReply(original.Text, fromSelf))
 	} else if original.Caption != "" {
-		parts = append(parts, original.Caption)
+		parts = append(parts, trimOwnReply(original.Caption, fromSelf))
 	}
 
 	if original.Location != nil {
@@ -63,4 +73,17 @@ func enrichReplyContent(msg *models.Message) string {
 	}
 
 	return fmt.Sprintf("[Reply to %s]: %s", fromName, strings.Join(parts, " "))
+}
+
+const replyOwnMaxRunes = 200
+
+func trimOwnReply(text string, fromSelf bool) string {
+	if !fromSelf {
+		return text
+	}
+	r := []rune(strings.TrimSpace(text))
+	if len(r) <= replyOwnMaxRunes {
+		return string(r)
+	}
+	return strings.TrimSpace(string(r[:replyOwnMaxRunes])) + "…"
 }
