@@ -338,6 +338,7 @@ type DisplayCfg struct {
 	ToolMessages     bool
 	HistoryMaxLen    *int // max runes for /history entries; nil = default, 0 = no truncation
 	HideAgentFooter  bool // strip model/token footer lines emitted as agent text
+	HideToolResults  bool // LOCAL PATCH: hide tool result messages, keep tool-use
 }
 
 // InstantReplyCfg controls the immediate confirmation reply sent when a message
@@ -5978,7 +5979,7 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 			}
 
 		case EventToolResult:
-			if e.display.ToolMessages {
+			if e.display.ToolMessages && !e.display.HideToolResults {
 				result := strings.TrimSpace(event.ToolResult)
 				if result == "" {
 					result = strings.TrimSpace(event.Content)
