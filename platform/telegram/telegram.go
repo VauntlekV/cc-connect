@@ -127,6 +127,10 @@ type Platform struct {
 	newBot              botFactory
 	newBackoffTimer     func(time.Duration) backoffTimer
 	newTypingTicker     func(time.Duration) typingTicker
+
+	albumMu          sync.Mutex
+	albums           map[string]*mediaGroupBuffer
+	mediaGroupWindow time.Duration // 0 = defaultMediaGroupWindow
 }
 
 const (
@@ -439,6 +443,13 @@ func (p *Platform) handleMessage(ctx context.Context, msg *models.Message) {
 	chatName := ""
 	if isGroup {
 		chatName = msg.Chat.Title
+	}
+
+	// Albums arrive as one update per item; merge them before group filtering
+	// because only the captioned item usually carries the @mention / reply.
+	if isAlbumItem(msg) {
+		p.bufferMediaGroup(ctx, msg)
+		return
 	}
 
 	if isGroup && !p.groupReplyAll {
@@ -1942,6 +1953,7 @@ func (p *Platform) Stop() error {
 	p.selfUser = nil
 	p.mu.Unlock()
 
+	p.stopMediaGroups()
 	if cancel != nil {
 		cancel()
 	}
