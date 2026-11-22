@@ -203,6 +203,7 @@ type DisplayConfig struct {
 	ShowContextIndicator *bool   `toml:"show_context_indicator"` // whether [ctx: ~N%] suffix is shown; default true
 	ReplyFooter          *bool   `toml:"reply_footer"`           // whether Codex-like footer is shown; default true
 	HideAgentFooter      *bool   `toml:"hide_agent_footer"`      // strip agent-emitted model/token footer lines; default false
+	HideToolResults      *bool   `toml:"hide_tool_results"`      // LOCAL PATCH: hide tool result messages, keep tool-use; default false
 }
 
 // StreamPreviewConfig controls real-time streaming preview in IM.

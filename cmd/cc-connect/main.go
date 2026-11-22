@@ -562,6 +562,7 @@ func main() {
 				ToolMessages:     tool,
 				HistoryMaxLen:    &historyMaxLen,
 				HideAgentFooter:  hideAgentFooter,
+				HideToolResults:  cfg.Display.HideToolResults != nil && *cfg.Display.HideToolResults,
 			})
 		}
 
@@ -1824,6 +1825,7 @@ func reloadConfig(configPath, projName string, engine *core.Engine) (*core.Confi
 		ToolMessages:     tool,
 		HistoryMaxLen:    &historyMaxLen,
 		HideAgentFooter:  hideAgentFooter,
+		HideToolResults:  cfg.Display.HideToolResults != nil && *cfg.Display.HideToolResults,
 	})
 	result.DisplayUpdated = true
 
