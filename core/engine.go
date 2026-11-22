@@ -5949,7 +5949,9 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 				if previewActive {
 					sp.detachPreview() // keep frozen preview visible as permanent message
 				}
-				toolInput := event.ToolInput
+				// LOCAL PATCH tool-input-truncate: apply tool_max_len to the
+				// standalone tool-use message too (upstream only truncates the card payload).
+				toolInput := truncateIf(event.ToolInput, e.display.ToolMaxLen)
 				var formattedInput string
 				if toolInput == "" {
 					formattedInput = ""
