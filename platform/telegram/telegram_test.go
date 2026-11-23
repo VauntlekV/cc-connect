@@ -1089,3 +1089,29 @@ func TestFormatDiceContentCoversTelegramDiceFamily(t *testing.T) {
 		})
 	}
 }
+
+func TestRichMessagesCanBeDisabled(t *testing.T) {
+	pl, err := New(map[string]any{"token": "test-token", "rich_messages": false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := pl.(*Platform)
+	p.httpClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		t.Fatal("rich_messages=false must not call the Bot API rich endpoints")
+		return nil, nil
+	})}
+	if _, err := p.sendRichMessage(context.Background(), 1, 0, 0, "hi", nil); !errors.Is(err, errRichMessagesDisabled) {
+		t.Fatalf("sendRichMessage err = %v", err)
+	}
+	if _, err := p.editRichMessage(context.Background(), 1, 1, "hi", nil); !errors.Is(err, errRichMessagesDisabled) {
+		t.Fatalf("editRichMessage err = %v", err)
+	}
+	def, _ := New(map[string]any{"token": "test-token"})
+	if def.(*Platform).disableRichMessages {
+		t.Fatal("rich messages must stay enabled by default")
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }

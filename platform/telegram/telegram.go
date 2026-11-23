@@ -111,6 +111,7 @@ type Platform struct {
 	groupReplyAll         bool
 	shareSessionInChannel bool
 	enableReactions       bool
+	disableRichMessages   bool   // rich_messages = false: always use plain sendMessage / editMessageText
 	progressStyle         string // "legacy" | "compact" — telegram has no rich card, so "card" is mapped to "compact"
 	httpClient            *http.Client
 
@@ -171,6 +172,9 @@ func New(opts map[string]any) (core.Platform, error) {
 	groupReplyAll, _ := opts["group_reply_all"].(bool)
 	shareSessionInChannel, _ := opts["share_session_in_channel"].(bool)
 	enableReactions, _ := opts["enable_reactions"].(bool)
+	// rich_messages = false turns off Bot API 10.x sendRichMessage: rich
+	// messages can't be partially quoted or partially copied in clients.
+	richMessages, hasRich := opts["rich_messages"].(bool)
 
 	// Default to "compact" so streaming edits work out of the box. Telegram has
 	// no rich card UI, so "card" is normalized to "compact". Users can opt out
@@ -197,6 +201,7 @@ func New(opts map[string]any) (core.Platform, error) {
 		groupReplyAll:         groupReplyAll,
 		shareSessionInChannel: shareSessionInChannel,
 		enableReactions:       enableReactions,
+		disableRichMessages:   hasRich && !richMessages,
 		progressStyle:         progressStyle,
 		httpClient:            httpClient,
 	}, nil
@@ -1186,6 +1191,9 @@ type editRichMessageParams struct {
 }
 
 func (p *Platform) sendRichMessage(ctx context.Context, chatID any, threadID int, replyMsgID int, content string, markup *models.InlineKeyboardMarkup) (*models.Message, error) {
+	if p.disableRichMessages {
+		return nil, errRichMessagesDisabled
+	}
 	cleanMd := core.StripANSI(content)
 	cleanMd = core.FormatSmartTelegramRichMarkdown(cleanMd)
 	isRTL := core.IsRTL(cleanMd)
@@ -1251,7 +1259,12 @@ func (p *Platform) sendRichMessage(ctx context.Context, chatID any, threadID int
 	return tgResp.Result, nil
 }
 
+var errRichMessagesDisabled = errors.New("rich messages disabled by config")
+
 func (p *Platform) editRichMessage(ctx context.Context, chatID any, messageID int, content string, markup *models.InlineKeyboardMarkup) (*models.Message, error) {
+	if p.disableRichMessages {
+		return nil, errRichMessagesDisabled
+	}
 	cleanMd := core.StripANSI(content)
 	cleanMd = core.FormatSmartTelegramRichMarkdown(cleanMd)
 	isRTL := core.IsRTL(cleanMd)
