@@ -142,6 +142,7 @@ func New(opts map[string]any) (core.Agent, error) {
 		mode:         mode,
 
 		thoughtLevelOverride: effort,
+		currentThoughtLevel:  effort,
 	}, nil
 }
 

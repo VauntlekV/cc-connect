@@ -70,3 +70,15 @@ func TestWorkspaceAgentOptions(t *testing.T) {
 		t.Fatalf("display_name = %q, want Copilot ACP", got)
 	}
 }
+
+func TestConfiguredReasoningEffortIsReported(t *testing.T) {
+	ag, err := New(map[string]any{"cmd": "true", "reasoning_effort": "medium"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := ag.(*Agent)
+	a.reportThoughtLevels("high", []string{"low", "medium", "high"})
+	if got := a.GetReasoningEffort(); got != "medium" {
+		t.Fatalf("GetReasoningEffort() = %q, want medium", got)
+	}
+}
