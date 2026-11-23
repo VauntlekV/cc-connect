@@ -1,0 +1,173 @@
+#!/usr/bin/python3 -I
+"""cc-connect 里的 bot 发 Telegram 贴纸。
+
+tg-sticker list [关键字]     列出贴纸库：id emoji 贴纸包 备注 预览图
+tg-sticker send <id|emoji|备注关键字>   发到当前会话（多张匹配时随机挑一张）
+tg-sticker note <id> <备注>  给贴纸写备注，方便以后按意思挑
+tg-sticker add <包名|t.me/addstickers/链接>  把整个贴纸包加进库（所有 bot 共用）
+tg-sticker remove <包名>     把贴纸包移出库
+tg-sticker packs             已入库的贴纸包
+tg-sticker seen              用户最近发过、但没入库的贴纸包（只在用户要求时才 add）
+
+贴纸包只能手动 add/remove（列表 ~/.cc-connect/stickers/packs.json，所有 bot 共用）；
+用户发的贴纸 cc-connect 只记在 ~/.cc-connect/stickers.jsonl，不会自动入库。
+file_id 每个 bot 不通用，所以每个项目一份库。预览图是静态图，可以直接看图挑。
+"""
+import functools, json, os, random, sys, tomllib, urllib.error, urllib.parse, urllib.request
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
+ROOT = Path.home() / ".cc-connect"
+DIR = ROOT / "stickers"
+
+
+@functools.cache
+def token():
+    project = os.environ["CC_PROJECT"]
+    cfg = tomllib.loads((ROOT / "config.toml").read_text())
+    p = next(p for p in cfg["projects"] if p["name"] == project)
+    return next(pl["options"]["token"] for pl in p["platforms"] if pl["type"] == "telegram")
+
+
+def fetch(url, data=None):
+    # 本机到 api.telegram.org 偶尔断连，重试两次
+    for i in range(3):
+        try:
+            with urllib.request.urlopen(url, data, timeout=30) as r:
+                return r.read()
+        except urllib.error.HTTPError:
+            raise  # 4xx/5xx 是 Telegram 的明确答复，重试没用
+        except urllib.error.URLError:
+            if i == 2:
+                raise
+
+
+def api(method, **params):
+    body = fetch(f"https://api.telegram.org/bot{token()}/{method}", urllib.parse.urlencode(params).encode())
+    return json.loads(body)["result"]
+
+
+def download(file_id, dest):
+    path = api("getFile", file_id=file_id)["file_path"]
+    dest.write_bytes(fetch(f"https://api.telegram.org/file/bot{token()}/{path}"))
+
+
+def add(lib, st, set_name):
+    uid = st["file_unique_id"]
+    lib[uid] = {"file_id": st["file_id"], "emoji": st.get("emoji", ""), "set": set_name}
+    # 动态/视频贴纸只能拿缩略图当预览
+    animated = st.get("is_animated") or st.get("is_video")
+    src = (st.get("thumbnail") or {}).get("file_id") if animated else st["file_id"]
+    dest = DIR / f"{uid}.webp"
+    if src and not dest.exists():
+        try:
+            download(src, dest)
+        except (urllib.error.URLError, KeyError) as e:
+            # 个别贴纸 getFile 会 400（文件过大等），没预览也照样能发
+            print(f"预览图下载失败，跳过 {uid}: {e}", file=sys.stderr)
+    if dest.exists():
+        lib[uid]["preview"] = str(dest)
+
+
+NOTES = DIR / "notes.json"  # 备注按 file_unique_id 存，所有 bot 共用
+
+
+def notes():
+    return json.loads(NOTES.read_text()) if NOTES.exists() else {}
+
+
+def lib_path():
+    return DIR / f"library-{os.environ['CC_PROJECT']}.json"
+
+
+def save(lib):
+    lib_path().write_text(json.dumps(lib, ensure_ascii=False, indent=1))
+
+
+PACKS = DIR / "packs.json"  # 入库的贴纸包名，所有 bot 共用，只由 add/remove 改
+
+
+def packs():
+    return json.loads(PACKS.read_text()) if PACKS.exists() else []
+
+
+def sync():
+    """让本 bot 的库和 packs.json 一致：补上新加的包，删掉被移除的包。"""
+    DIR.mkdir(exist_ok=True)
+    lib = json.loads(lib_path().read_text()) if lib_path().exists() else {}
+    want = set(packs())
+    stale = [u for u, v in lib.items() if v["set"] not in want]
+    for u in stale:
+        del lib[u]
+    new = want - {v["set"] for v in lib.values()}
+    for name in new:
+        try:
+            stickers = api("getStickerSet", name=name)["stickers"]
+        except urllib.error.URLError as e:
+            print(f"贴纸包 {name} 获取失败，下次再试: {e}", file=sys.stderr)
+            continue
+        with ThreadPoolExecutor(8) as ex:
+            list(ex.map(lambda st: add(lib, st, name), stickers))
+    if new or stale:
+        save(lib)
+    return lib
+
+
+def chat():
+    # CC_SESSION_KEY: telegram:<chat>:<user> 或 telegram:<chat>:<thread>:<user>
+    parts = os.environ["CC_SESSION_KEY"].split(":")
+    assert parts[0] == "telegram", "只支持 Telegram 会话"
+    return parts[1], (parts[2] if len(parts) == 4 else None)
+
+
+def main(argv):
+    cmd = argv[1] if len(argv) > 1 else "list"
+    if cmd in ("add", "remove"):
+        name = argv[2].rstrip("/").rsplit("/", 1)[-1]
+        ps = [p for p in packs() if p != name] + ([name] if cmd == "add" else [])
+        DIR.mkdir(exist_ok=True)
+        PACKS.write_text(json.dumps(ps, ensure_ascii=False, indent=1))
+    if cmd == "seen":
+        log = ROOT / "stickers.jsonl"
+        recent = [json.loads(l).get("set_name", "") for l in log.read_text().splitlines() if l] if log.exists() else []
+        have = set(packs())
+        for name in dict.fromkeys(reversed(recent)):
+            if name and name not in have:
+                print(f"{name}\thttps://t.me/addstickers/{name}")
+        return
+    lib = sync()
+    if cmd == "add":
+        print(sum(v["set"] == name for v in lib.values()), "张已入库")
+    elif cmd == "remove":
+        print(f"已移出 {name}")
+    elif cmd == "packs":
+        for name in packs():
+            print(f"{name}\t{sum(v['set'] == name for v in lib.values())} 张")
+    elif cmd == "list":
+        kw = argv[2] if len(argv) > 2 else ""
+        ns = notes()
+        for uid, v in lib.items():
+            row = f"{uid}\t{v['emoji']}\t{v['set']}\t{ns.get(uid, '')}\t{v.get('preview', '')}"
+            if kw in row:
+                print(row)
+    elif cmd == "send":
+        key = argv[2]
+        ns = notes()
+        ids = [key] if key in lib else [u for u, v in lib.items() if key in v["emoji"] or key in ns.get(u, "")]
+        if not ids:
+            sys.exit(f"没有匹配 {key} 的贴纸，先 tg-sticker list 看看")
+        chat_id, thread = chat()
+        params = {"chat_id": chat_id, "sticker": lib[random.choice(ids)]["file_id"]}
+        if thread:
+            params["message_thread_id"] = thread
+        api("sendSticker", **params)
+        print("已发送")
+    elif cmd == "note":
+        ns = notes()
+        ns[argv[2]] = " ".join(argv[3:])
+        NOTES.write_text(json.dumps(ns, ensure_ascii=False, indent=1))
+    else:
+        sys.exit(__doc__)
+
+
+main(sys.argv)

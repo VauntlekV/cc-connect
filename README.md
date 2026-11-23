@@ -21,8 +21,16 @@
 - 相册（`media_group_id`）的多张图等 0.6 秒合并成一条消息。
 - 回复消息：用户选中了部分文字时只带选中的引用；回复 bot 自己的消息时只带原文前 200 字（上游带全文）。
 - 贴纸转成图片发给 agent（动态 / 视频贴纸用缩略图），内容为 `[贴纸 emoji]`；贴纸等 2 秒与下一条消息合并成一轮。
-- 收到的贴纸（贴纸包名、emoji、file_id）追加记录到 `~/.cc-connect/stickers.jsonl`，只做记录；cc-connect 本身不提供发贴纸功能，bot 发贴纸和贴纸库管理由外部脚本负责（贴纸包需手动加入）。
+- 收到的贴纸（贴纸包名、emoji、file_id）追加记录到 `~/.cc-connect/stickers.jsonl`，只做记录；cc-connect 本身不提供发贴纸功能，由 [`tools/tg-sticker`](tools/tg-sticker) 负责。
 - 每条消息等 0.8 秒，期间到达的转发消息并入同一轮；群里跟在 @bot 消息后面的转发即使没 @ 也会并入。
+
+## 附带工具
+
+- [`tools/tg-sticker`](tools/tg-sticker)：让 cc-connect 里的 agent 发 Telegram 贴纸（Python 3.11+，无第三方依赖）。在 agent 的 shell 里运行，依赖 cc-connect 注入的 `CC_PROJECT` / `CC_SESSION_KEY`，bot token 运行时从 `~/.cc-connect/config.toml` 读取。
+  - `list [关键字]` 列出贴纸（id、emoji、贴纸包、备注、静态预览图路径），`send <id|emoji|备注关键字>` 发到当前会话，`note <id> <备注>` 写备注。
+  - 贴纸包手动管理：`add <包名|t.me/addstickers 链接>`、`remove <包名>`、`packs`；`seen` 列出用户最近发过但未入库的包。
+  - 数据在 `~/.cc-connect/stickers/`：`packs.json`（入库的包，所有 bot 共用）、`notes.json`（备注，共用）、`library-<项目>.json`（file_id 按 bot 区分）和预览图。
+  - 安装：`ln -s "$PWD/tools/tg-sticker" ~/.local/bin/tg-sticker`
 
 ## 协议
 
