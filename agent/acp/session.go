@@ -65,6 +65,12 @@ type acpSession struct {
 	// to the platform instead of buffering them until the next turn.
 	promptInFlight atomic.Int32
 
+	// bgResultTimer debounces the synthetic EventResult for out-of-turn
+	// text: agents stream a late reply as many chunks, and closing each
+	// chunk separately made the platform post every chunk as its own message.
+	bgMu          sync.Mutex
+	bgResultTimer *time.Timer
+
 	callbacks sessionCallbacks // may be nil (tests, integration harness)
 }
 
@@ -600,8 +606,33 @@ func (s *acpSession) onNotification(method string, params json.RawMessage) {
 	// as stale. Close it with a synthetic result so the unsolicited reader
 	// relays it immediately.
 	if hasVisible && s.promptInFlight.Load() == 0 {
-		s.emit(core.Event{Type: core.EventResult, SessionID: sid, Done: true})
+		s.scheduleBackgroundResult(sid)
 	}
+}
+
+// backgroundResultDelay is how long out-of-turn text must stay quiet before
+// it is closed with a synthetic EventResult and relayed as one message.
+var backgroundResultDelay = 1500 * time.Millisecond
+
+func (s *acpSession) scheduleBackgroundResult(sid string) {
+	s.bgMu.Lock()
+	defer s.bgMu.Unlock()
+	if s.bgResultTimer != nil {
+		s.bgResultTimer.Stop()
+	}
+	var t *time.Timer
+	t = time.AfterFunc(backgroundResultDelay, func() {
+		s.bgMu.Lock()
+		current := s.bgResultTimer == t
+		if current {
+			s.bgResultTimer = nil
+		}
+		s.bgMu.Unlock()
+		if current {
+			s.emit(core.Event{Type: core.EventResult, SessionID: sid, Done: true})
+		}
+	})
+	s.bgResultTimer = t
 }
 
 // maybeAbsorbUsageUpdate watches session/update notifications for

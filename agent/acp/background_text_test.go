@@ -87,3 +87,43 @@ func TestSession_OutOfTurnNonTextGetsNoSyntheticResult(t *testing.T) {
 		}
 	}
 }
+
+// A late reply streamed as several out-of-turn chunks must be closed by a
+// single synthetic EventResult, so the platform posts it as one message.
+func TestSession_OutOfTurnChunksShareOneResult(t *testing.T) {
+	old := backgroundResultDelay
+	backgroundResultDelay = 200 * time.Millisecond
+	defer func() { backgroundResultDelay = old }()
+	s, wResp, _ := newTestSession(t, nil)
+
+	go func() {
+		for _, txt := range []string{"part one, ", "part two, ", "part three"} {
+			_, _ = wResp.Write([]byte(`{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"test-session-id","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"` + txt + `"}}}}` + "\n"))
+			time.Sleep(50 * time.Millisecond)
+		}
+	}()
+
+	var texts, results int
+	deadline := time.After(2 * time.Second)
+	for results == 0 {
+		select {
+		case ev := <-s.Events():
+			switch ev.Type {
+			case core.EventText:
+				texts++
+			case core.EventResult:
+				results++
+			}
+		case <-deadline:
+			t.Fatalf("no synthetic EventResult (texts=%d)", texts)
+		}
+	}
+	if texts != 3 {
+		t.Fatalf("result arrived after %d text chunks, want all 3", texts)
+	}
+	select {
+	case ev := <-s.Events():
+		t.Fatalf("unexpected extra event %+v", ev)
+	case <-time.After(400 * time.Millisecond):
+	}
+}
