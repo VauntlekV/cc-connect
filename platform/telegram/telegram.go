@@ -1261,6 +1261,16 @@ func (p *Platform) sendRichMessage(ctx context.Context, chatID any, threadID int
 
 var errRichMessagesDisabled = errors.New("rich messages disabled by config")
 
+// formatHTML renders content for plain sendMessage / editMessageText. Upstream
+// folds every message longer than 80 runes into an expandable quote; with
+// rich_messages = false the message is shown in full instead.
+func (p *Platform) formatHTML(content string) string {
+	if p.disableRichMessages {
+		return core.MarkdownToSimpleHTML(content)
+	}
+	return core.FormatSmartTelegramHTML(content)
+}
+
 func (p *Platform) editRichMessage(ctx context.Context, chatID any, messageID int, content string, markup *models.InlineKeyboardMarkup) (*models.Message, error) {
 	if p.disableRichMessages {
 		return nil, errRichMessagesDisabled
@@ -1345,7 +1355,7 @@ func (p *Platform) Reply(ctx context.Context, rctx any, content string) error {
 		return err
 	}
 
-	html := core.FormatSmartTelegramHTML(content)
+	html := p.formatHTML(content)
 	params := &tgbot.SendMessageParams{
 		ChatID:          rc.chatID,
 		MessageThreadID: rc.threadID,
@@ -1401,7 +1411,7 @@ func (p *Platform) Send(ctx context.Context, rctx any, content string) error {
 		return err
 	}
 
-	html := core.FormatSmartTelegramHTML(content)
+	html := p.formatHTML(content)
 	params := &tgbot.SendMessageParams{
 		ChatID:          rc.chatID,
 		MessageThreadID: rc.threadID,
@@ -1605,7 +1615,7 @@ func (p *Platform) SendWithButtons(ctx context.Context, rctx any, content string
 		return err
 	}
 
-	html := core.FormatSmartTelegramHTML(content)
+	html := p.formatHTML(content)
 	params := &tgbot.SendMessageParams{
 		ChatID:          rc.chatID,
 		MessageThreadID: rc.threadID,
@@ -1750,7 +1760,7 @@ func (p *Platform) SendPreviewStart(ctx context.Context, rctx any, content strin
 		return nil, err
 	}
 
-	html := core.FormatSmartTelegramHTML(content)
+	html := p.formatHTML(content)
 	params := &tgbot.SendMessageParams{
 		ChatID:          rc.chatID,
 		MessageThreadID: rc.threadID,
@@ -1809,7 +1819,7 @@ func (p *Platform) UpdateMessage(ctx context.Context, previewHandle any, content
 		return err
 	}
 
-	html := core.FormatSmartTelegramHTML(content)
+	html := p.formatHTML(content)
 	slog.Debug("telegram: UpdateMessage",
 		"content_len", len(content), "html_len", len(html),
 		"content_prefix", truncateForLog(content, 80),

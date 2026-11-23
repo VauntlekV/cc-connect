@@ -1106,6 +1106,10 @@ func TestRichMessagesCanBeDisabled(t *testing.T) {
 	if _, err := p.editRichMessage(context.Background(), 1, 1, "hi", nil); !errors.Is(err, errRichMessagesDisabled) {
 		t.Fatalf("editRichMessage err = %v", err)
 	}
+	long := strings.Repeat("这是一段很长的回复内容。", 20)
+	if got := p.formatHTML(long); strings.Contains(got, "expandable") {
+		t.Fatalf("rich_messages=false must not fold the message: %q", got)
+	}
 	def, _ := New(map[string]any{"token": "test-token"})
 	if def.(*Platform).disableRichMessages {
 		t.Fatal("rich messages must stay enabled by default")
