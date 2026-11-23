@@ -91,10 +91,14 @@ def packs():
     return json.loads(PACKS.read_text()) if PACKS.exists() else []
 
 
+def load_lib():
+    return json.loads(lib_path().read_text()) if lib_path().exists() else {}
+
+
 def sync():
     """让本 bot 的库和 packs.json 一致：补上新加的包，删掉被移除的包。"""
     DIR.mkdir(exist_ok=True)
-    lib = json.loads(lib_path().read_text()) if lib_path().exists() else {}
+    lib = load_lib()
     want = set(packs())
     stale = [u for u, v in lib.items() if v["set"] not in want]
     for u in stale:
@@ -135,15 +139,18 @@ def main(argv):
             if name and name not in have:
                 print(f"{name}\thttps://t.me/addstickers/{name}")
         return
-    lib = sync()
     if cmd == "add":
+        lib = sync()
         print(sum(v["set"] == name for v in lib.values()), "张已入库")
     elif cmd == "remove":
+        sync()
         print(f"已移出 {name}")
     elif cmd == "packs":
+        lib = load_lib()
         for name in packs():
             print(f"{name}\t{sum(v['set'] == name for v in lib.values())} 张")
     elif cmd == "list":
+        lib = sync()
         kw = argv[2] if len(argv) > 2 else ""
         ns = notes()
         for uid, v in lib.items():
@@ -153,7 +160,12 @@ def main(argv):
     elif cmd == "send":
         key = argv[2]
         ns = notes()
-        ids = [key] if key in lib else [u for u, v in lib.items() if key in v["emoji"] or key in ns.get(u, "")]
+        lib = load_lib()
+        match = lambda l: [key] if key in l else [u for u, v in l.items() if key in v["emoji"] or key in ns.get(u, "")]
+        ids = match(lib)
+        if not ids and set(packs()) - {v["set"] for v in lib.values()}:
+            lib = sync()
+            ids = match(lib)
         if not ids:
             sys.exit(f"没有匹配 {key} 的贴纸，先 tg-sticker list 看看")
         chat_id, thread = chat()
@@ -163,6 +175,7 @@ def main(argv):
         api("sendSticker", **params)
         print("已发送")
     elif cmd == "note":
+        DIR.mkdir(exist_ok=True)
         ns = notes()
         ns[argv[2]] = " ".join(argv[3:])
         NOTES.write_text(json.dumps(ns, ensure_ascii=False, indent=1))

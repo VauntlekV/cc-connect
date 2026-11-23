@@ -673,7 +673,21 @@ func (p *Platform) dispatchMessage(msg *core.Message, tgMsg *models.Message) {
 		p.holdSticker(msg, handler)
 		return
 	}
+	if tgMsg.ForwardOrigin == nil && strings.HasPrefix(strings.TrimSpace(msg.Content), "/") {
+		if prev := p.takeForward(stickerKey(msg)); prev != nil {
+			handler(p, prev)
+		}
+		handler(p, msg)
+		return
+	}
 	p.mergeSticker(msg)
+	if tgMsg.MediaGroupID != "" && tgMsg.ForwardOrigin == nil {
+		if prev := p.takeForward(stickerKey(msg)); prev != nil {
+			handler(p, prev)
+		}
+		handler(p, msg)
+		return
+	}
 	p.holdForward(msg, tgMsg.ForwardOrigin, handler)
 }
 

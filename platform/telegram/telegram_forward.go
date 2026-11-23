@@ -12,7 +12,7 @@ import (
 	"github.com/go-telegram/bot/models"
 )
 
-const defaultForwardWindow = 800 * time.Millisecond
+const defaultForwardWindow = 400 * time.Millisecond
 
 type pendingForward struct {
 	msg        *core.Message

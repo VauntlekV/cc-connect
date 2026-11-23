@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/chenhg5/cc-connect/core"
@@ -133,29 +134,53 @@ func (p *Platform) flushMediaGroup(ctx context.Context, key string) {
 	}
 	botName := p.botUsername()
 
+	type albumItemResult struct {
+		img     *core.ImageAttachment
+		file    *core.FileAttachment
+		caption string
+	}
+	results := make([]albumItemResult, len(msgs))
+	var wg sync.WaitGroup
+	for i, m := range msgs {
+		wg.Add(1)
+		go func(i int, m *models.Message) {
+			defer wg.Done()
+			var res albumItemResult
+			switch {
+			case len(m.Photo) > 0:
+				best := m.Photo[len(m.Photo)-1]
+				data, err := p.downloadFile(best.FileID)
+				if err != nil {
+					slog.Error("telegram: download album photo failed", "error", err, "message_id", m.ID)
+					return
+				}
+				res.img = &core.ImageAttachment{MimeType: "image/jpeg", Data: data}
+			case m.Document != nil:
+				data, err := p.downloadFile(m.Document.FileID)
+				if err != nil {
+					slog.Error("telegram: download album document failed", "error", err, "message_id", m.ID)
+					return
+				}
+				res.file = &core.FileAttachment{MimeType: m.Document.MimeType, Data: data, FileName: m.Document.FileName}
+			}
+			res.caption = strings.TrimSpace(stripBotMention(m.Caption, botName))
+			results[i] = res
+		}(i, m)
+	}
+	wg.Wait()
+
 	var images []core.ImageAttachment
 	var files []core.FileAttachment
 	var captions []string
-	for _, m := range msgs {
-		switch {
-		case len(m.Photo) > 0:
-			best := m.Photo[len(m.Photo)-1]
-			data, err := p.downloadFile(best.FileID)
-			if err != nil {
-				slog.Error("telegram: download album photo failed", "error", err, "message_id", m.ID)
-				continue
-			}
-			images = append(images, core.ImageAttachment{MimeType: "image/jpeg", Data: data})
-		case m.Document != nil:
-			data, err := p.downloadFile(m.Document.FileID)
-			if err != nil {
-				slog.Error("telegram: download album document failed", "error", err, "message_id", m.ID)
-				continue
-			}
-			files = append(files, core.FileAttachment{MimeType: m.Document.MimeType, Data: data, FileName: m.Document.FileName})
+	for _, r := range results {
+		if r.img != nil {
+			images = append(images, *r.img)
 		}
-		if c := strings.TrimSpace(stripBotMention(m.Caption, botName)); c != "" {
-			captions = append(captions, c)
+		if r.file != nil {
+			files = append(files, *r.file)
+		}
+		if r.caption != "" {
+			captions = append(captions, r.caption)
 		}
 	}
 	if len(images) == 0 && len(files) == 0 {

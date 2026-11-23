@@ -16914,77 +16914,96 @@ func (e *Engine) HandleRelayOpts(ctx context.Context, fromProject, sourceSession
 
 	saveRelaySessionID(agentSession.CurrentSessionID(), false)
 
-	if err := agentSession.Send(message, "", nil, nil); err != nil {
-		agentSession.Close()
-		return "", fmt.Errorf("send relay message: %w", err)
-	}
+	// Run Send concurrently with reading Events: agents like ACP block inside
+	// Send until the turn finishes and stream events meanwhile.
+	sendDone := make(chan error, 1)
+	go func() {
+		sendDone <- agentSession.Send(message, "", nil, nil)
+	}()
 
 	var textParts []string
-	for event := range agentSession.Events() {
-		switch event.Type {
-		case EventText:
-			if event.Content != "" {
-				textParts = append(textParts, event.Content)
+	events := agentSession.Events()
+	for {
+		select {
+		case err := <-sendDone:
+			sendDone = nil
+			if err != nil {
+				agentSession.Close()
+				return "", fmt.Errorf("send relay message: %w", err)
 			}
-			if event.SessionID != "" {
-				saveRelaySessionID(event.SessionID, false)
-			}
-		case EventToolResult:
-			// Tool output is intermediate state, not an answer. It is
-			// deliberately NOT accumulated into textParts: on the timeout
-			// path textParts is handed back to the caller verbatim, so a
-			// tool dump would be billed into the caller's context — and
-			// re-billed on every later turn of that session.
-			slog.Debug("relay: tool result (not relayed)",
-				"from", fromProject, "to", e.name, "tool", event.ToolName)
-		case EventResult:
-			// Use agentSession.CurrentSessionID() for the same reason as above.
-			if currentID := agentSession.CurrentSessionID(); currentID != "" {
-				saveRelaySessionID(currentID, true)
-			}
-			resp := event.Content
-			if resp == "" && len(textParts) > 0 {
-				resp = strings.Join(textParts, "")
-			}
-			if resp == "" {
-				resp = "(empty response)"
-			}
-			slog.Info("relay: turn complete", "from", fromProject, "to", e.name, "response_len", len(resp))
-			agentSession.Close()
-			return resp, nil
-		case EventError:
-			agentSession.Close()
-			if event.Error != nil {
-				return "", event.Error
-			}
-			return "", fmt.Errorf("agent error (no details)")
-		case EventPermissionRequest:
-			// Auto-approve all permissions in relay mode
-			_ = agentSession.RespondPermission(event.RequestID, PermissionResult{
-				Behavior:     "allow",
-				UpdatedInput: event.ToolInputRaw,
-			})
-		}
-		if ctx.Err() != nil {
+		case <-ctx.Done():
 			// Relay timed out. Let the agent finish its turn in the
 			// background so the session state is saved cleanly and the
 			// session remains resumable for the next relay call.
 			go e.drainRelaySession(agentSession, session, sessions, agent.Name(), relaySessionKey)
 			return e.relayPartialResponseOrError(ctx.Err(), textParts, fromProject, e.name)
+		case event, ok := <-events:
+			if !ok {
+				if sendDone != nil {
+					select {
+					case err := <-sendDone:
+						if err != nil {
+							agentSession.Close()
+							return "", fmt.Errorf("send relay message: %w", err)
+						}
+					default:
+					}
+				}
+				agentSession.Close()
+				if ctx.Err() != nil {
+					return e.relayPartialResponseOrError(ctx.Err(), textParts, fromProject, e.name)
+				}
+				if len(textParts) > 0 {
+					return strings.Join(textParts, ""), nil
+				}
+				return "", fmt.Errorf("relay: agent process exited without response")
+			}
+			switch event.Type {
+			case EventText:
+				if event.Content != "" {
+					textParts = append(textParts, event.Content)
+				}
+				if event.SessionID != "" {
+					saveRelaySessionID(event.SessionID, false)
+				}
+			case EventToolResult:
+				// Tool output is intermediate state, not an answer. It is
+				// deliberately NOT accumulated into textParts: on the timeout
+				// path textParts is handed back to the caller verbatim, so a
+				// tool dump would be billed into the caller's context — and
+				// re-billed on every later turn of that session.
+				slog.Debug("relay: tool result (not relayed)",
+					"from", fromProject, "to", e.name, "tool", event.ToolName)
+			case EventResult:
+				// Use agentSession.CurrentSessionID() for the same reason as above.
+				if currentID := agentSession.CurrentSessionID(); currentID != "" {
+					saveRelaySessionID(currentID, true)
+				}
+				resp := event.Content
+				if resp == "" && len(textParts) > 0 {
+					resp = strings.Join(textParts, "")
+				}
+				if resp == "" {
+					resp = "(empty response)"
+				}
+				slog.Info("relay: turn complete", "from", fromProject, "to", e.name, "response_len", len(resp))
+				agentSession.Close()
+				return resp, nil
+			case EventError:
+				agentSession.Close()
+				if event.Error != nil {
+					return "", event.Error
+				}
+				return "", fmt.Errorf("agent error (no details)")
+			case EventPermissionRequest:
+				// Auto-approve all permissions in relay mode
+				_ = agentSession.RespondPermission(event.RequestID, PermissionResult{
+					Behavior:     "allow",
+					UpdatedInput: event.ToolInputRaw,
+				})
+			}
 		}
 	}
-
-	// Event channel closed without EventResult.
-	agentSession.Close()
-
-	if ctx.Err() != nil {
-		return e.relayPartialResponseOrError(ctx.Err(), textParts, fromProject, e.name)
-	}
-
-	if len(textParts) > 0 {
-		return strings.Join(textParts, ""), nil
-	}
-	return "", fmt.Errorf("relay: agent process exited without response")
 }
 
 // relayPartialNoticeMaxRunes bounds the partial text handed back to the caller

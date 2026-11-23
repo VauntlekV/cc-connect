@@ -127,3 +127,31 @@ func TestSession_OutOfTurnChunksShareOneResult(t *testing.T) {
 	case <-time.After(400 * time.Millisecond):
 	}
 }
+
+func TestSession_BackgroundTimerSuppressedWhenForegroundStarts(t *testing.T) {
+	s, wResp, _ := newTestSession(t, nil)
+	s.bgResultDelay = 120 * time.Millisecond
+
+	go func() {
+		_, _ = wResp.Write([]byte(`{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"test-session-id","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"late chunk"}}}}` + "\n"))
+	}()
+
+	select {
+	case ev := <-s.Events():
+		if ev.Type != core.EventText {
+			t.Fatalf("first event = %+v, want EventText", ev)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for EventText")
+	}
+
+	// Simulate a foreground prompt starting before the background timer fires.
+	s.promptInFlight.Store(1)
+	defer s.promptInFlight.Store(0)
+
+	select {
+	case ev := <-s.Events():
+		t.Fatalf("background timer leaked EventResult into foreground turn: %+v", ev)
+	case <-time.After(300 * time.Millisecond):
+	}
+}

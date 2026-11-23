@@ -70,6 +70,7 @@ type acpSession struct {
 	// chunk separately made the platform post every chunk as its own message.
 	bgMu          sync.Mutex
 	bgResultTimer *time.Timer
+	bgResultDelay time.Duration // optional per-session override for tests
 
 	callbacks sessionCallbacks // may be nil (tests, integration harness)
 }
@@ -614,21 +615,34 @@ func (s *acpSession) onNotification(method string, params json.RawMessage) {
 // it is closed with a synthetic EventResult and relayed as one message.
 var backgroundResultDelay = 1500 * time.Millisecond
 
+func (s *acpSession) stopBackgroundResultTimer() {
+	s.bgMu.Lock()
+	if s.bgResultTimer != nil {
+		s.bgResultTimer.Stop()
+		s.bgResultTimer = nil
+	}
+	s.bgMu.Unlock()
+}
+
 func (s *acpSession) scheduleBackgroundResult(sid string) {
 	s.bgMu.Lock()
 	defer s.bgMu.Unlock()
 	if s.bgResultTimer != nil {
 		s.bgResultTimer.Stop()
 	}
+	delay := s.bgResultDelay
+	if delay == 0 {
+		delay = backgroundResultDelay
+	}
 	var t *time.Timer
-	t = time.AfterFunc(backgroundResultDelay, func() {
+	t = time.AfterFunc(delay, func() {
 		s.bgMu.Lock()
 		current := s.bgResultTimer == t
 		if current {
 			s.bgResultTimer = nil
 		}
 		s.bgMu.Unlock()
-		if current {
+		if current && s.promptInFlight.Load() == 0 && s.alive.Load() {
 			s.emit(core.Event{Type: core.EventResult, SessionID: sid, Done: true})
 		}
 	})
@@ -964,6 +978,7 @@ func (s *acpSession) Send(prompt string, messageID string, images []core.ImageAt
 
 	slog.Debug("acp: sending session/prompt", "session_id", sid, "prompt_len", len(prompt))
 	s.promptInFlight.Add(1)
+	s.stopBackgroundResultTimer()
 	res, err := s.tr.call(s.ctx, "session/prompt", params)
 	if err != nil {
 		s.promptInFlight.Add(-1)
@@ -1107,6 +1122,7 @@ func (s *acpSession) Alive() bool {
 
 func (s *acpSession) Close() error {
 	s.alive.Store(false)
+	s.stopBackgroundResultTimer()
 	s.cancel()
 	if s.cmd != nil && s.cmd.Process != nil {
 		_ = s.cmd.Process.Kill()

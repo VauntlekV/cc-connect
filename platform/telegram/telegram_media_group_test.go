@@ -216,3 +216,25 @@ func TestMediaGroupStopDropsPending(t *testing.T) {
 		t.Fatalf("album buffered after Stop")
 	}
 }
+
+func TestMediaGroupSkipsForwardWindow(t *testing.T) {
+	p, handled := newAlbumTestPlatform(false)
+	p.forwardWindow = 500 * time.Millisecond
+	chat := models.Chat{ID: 100, Type: models.ChatTypePrivate}
+	ctx := context.Background()
+	start := time.Now()
+	p.handleMessage(ctx, albumPhoto(90, chat, "fast", "hi"))
+	p.handleMessage(ctx, albumPhoto(91, chat, "fast", ""))
+
+	select {
+	case got := <-handled:
+		if len(got.Images) != 2 {
+			t.Fatalf("images = %d, want 2", len(got.Images))
+		}
+		if elapsed := time.Since(start); elapsed >= 350*time.Millisecond {
+			t.Fatalf("album waited on forwardWindow: elapsed=%v", elapsed)
+		}
+	case <-time.After(350 * time.Millisecond):
+		t.Fatal("album waited on forwardWindow")
+	}
+}

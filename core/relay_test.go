@@ -667,3 +667,38 @@ func TestHandleRelay_MultiWorkspaceRequiresWorkspaceBinding(t *testing.T) {
 		t.Fatalf("expected no global relay session, got %q", got)
 	}
 }
+
+type blockingSendSession struct {
+	events chan Event
+	count  int
+}
+
+func (s *blockingSendSession) Send(_ string, _ string, _ []ImageAttachment, _ []FileAttachment) error {
+	for i := 0; i < s.count; i++ {
+		s.events <- Event{Type: EventText, Content: "x", SessionID: "acp-1"}
+	}
+	s.events <- Event{Type: EventResult, SessionID: "acp-1", Done: true}
+	return nil
+}
+func (s *blockingSendSession) RespondPermission(_ string, _ PermissionResult) error { return nil }
+func (s *blockingSendSession) Events() <-chan Event                                 { return s.events }
+func (s *blockingSendSession) CurrentSessionID() string                             { return "acp-1" }
+func (s *blockingSendSession) Alive() bool                                          { return true }
+func (s *blockingSendSession) Close() error                                         { return nil }
+
+func TestHandleRelay_BlockingSendDoesNotDeadlock(t *testing.T) {
+	e := newTestEngine()
+	// Buffer smaller than event count: a synchronous Send before reading Events would deadlock.
+	sess := &blockingSendSession{events: make(chan Event, 2), count: 20}
+	e.agent = &relayFallbackAgent{freshSession: sess}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	resp, err := e.HandleRelay(ctx, "source", "test:chat-1:user", "hello")
+	if err != nil {
+		t.Fatalf("HandleRelay() error = %v", err)
+	}
+	if resp != strings.Repeat("x", 20) {
+		t.Fatalf("HandleRelay() = %q, want 20 x's", resp)
+	}
+}
