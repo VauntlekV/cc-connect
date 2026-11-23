@@ -8,7 +8,6 @@
 - Claude Code `/usage` 探测：支持新版 Claude Code 的 CSI G 光标定位；信任目录提示光标默认在 “No” 时先下移再确认。
 - `[display] hide_tool_results = true`：隐藏工具结果消息，保留工具调用消息。
 - 独立的工具调用消息也按 `tool_max_len` 截断（上游只截断卡片里的）。
-
 - 后台任务在本轮结束后才产出的消息（如 ACP 后台任务）也遵守 `NO_REPLY`。
 - ACP：配置里的 `reasoning_effort` 正确显示在页脚（上游会显示成第一档 low）。
 
