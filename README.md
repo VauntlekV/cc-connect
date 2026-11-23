@@ -25,6 +25,12 @@
 - 收到的贴纸（贴纸包名、emoji、file_id）追加记录到 `~/.cc-connect/stickers.jsonl`，只做记录；cc-connect 本身不提供发贴纸功能，由 [`tools/tg-sticker`](tools/tg-sticker) 负责。
 - 每条消息等 0.8 秒，期间到达的转发消息并入同一轮；群里跟在 @bot 消息后面的转发即使没 @ 也会并入。
 
+## 编译
+
+`tools/build.sh`：编译网页后台、跑相关测试、编译二进制并装到 `~/.local/opt/cc-connect/cc-connect`（`OUT=...` 可改），装好后自行重启服务。
+
+同步上游：`git fetch origin && git merge origin/main`，解决冲突、测试通过后推到本仓库 `main`，再运行 `tools/build.sh`。
+
 ## 附带工具
 
 - [`tools/tg-sticker`](tools/tg-sticker)：让 cc-connect 里的 agent 发 Telegram 贴纸（Python 3.11+，无第三方依赖）。在 agent 的 shell 里运行，依赖 cc-connect 注入的 `CC_PROJECT` / `CC_SESSION_KEY`，bot token 运行时从 `~/.cc-connect/config.toml` 读取。
