@@ -5203,7 +5203,10 @@ func (e *Engine) runUnsolicitedReader(ctx context.Context, cancel context.Cancel
 			// foreground turn's reply in the common case while a slow
 			// platform call can never extend that wait (some callers hold
 			// interactiveMu) beyond the bound.
-			chunks := SplitMessageCodeFenceAware(partial, maxPlatformMessageLen)
+			var chunks []string
+			if visible := stripSilentMarker(partial); visible != "" {
+				chunks = SplitMessageCodeFenceAware(visible, maxPlatformMessageLen)
+			}
 			flushHandedOff = true
 			go func() {
 				defer close(flushDone)
@@ -5313,8 +5316,8 @@ func (e *Engine) runUnsolicitedReader(ctx context.Context, cancel context.Cancel
 					fullResponse = strings.Join(textParts, "")
 				}
 
-				if fullResponse != "" {
-					for _, chunk := range SplitMessageCodeFenceAware(fullResponse, maxPlatformMessageLen) {
+				if visible := stripSilentMarker(fullResponse); visible != "" {
+					for _, chunk := range SplitMessageCodeFenceAware(visible, maxPlatformMessageLen) {
 						e.send(p, replyCtx, chunk)
 					}
 				}
@@ -18065,6 +18068,17 @@ func stripTrailingSilent(text string) (string, bool) {
 		return text, false
 	}
 	return strings.TrimRight(stripped, " \t\r\n"), true
+}
+
+// stripSilentMarker returns the text to deliver for a reply that may carry a
+// NO_REPLY marker: empty for a bare marker, otherwise the text without a
+// trailing marker. Used by the unsolicited (out-of-turn) reader.
+func stripSilentMarker(text string) string {
+	if isSilentReply(text) {
+		return ""
+	}
+	stripped, _ := stripTrailingSilent(text)
+	return stripped
 }
 
 // couldBeSilentPrefix reports whether the trimmed text is still a case-insensitive

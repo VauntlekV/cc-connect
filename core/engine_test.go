@@ -17425,3 +17425,32 @@ func TestCmdCurrent_UsesNativeSummaryForCurrentAgentSession(t *testing.T) {
 		t.Fatalf("/list item count = %d, want %d\n%s", got, len(nativeSessions), p.sent[0])
 	}
 }
+
+// Out-of-turn agent output (e.g. an ACP background task finishing after the
+// turn) must honour NO_REPLY like a foreground reply.
+func TestUnsolicitedReader_HonoursNoReply(t *testing.T) {
+	p := &stubPlatformEngine{n: "test"}
+	sess := newControllableSession("unsol-noreply")
+	e := NewEngine("test", &stubAgent{}, []Platform{p}, "", LangEnglish)
+	defer e.Stop()
+
+	session := e.sessions.GetOrCreateActive("test:ch1:u1")
+	state := &interactiveState{agentSession: sess, platform: p, replyCtx: "ctx"}
+	iKey := "test:ch1:u1"
+	e.interactiveMu.Lock()
+	e.interactiveStates[iKey] = state
+	e.interactiveMu.Unlock()
+
+	e.startUnsolicitedReader(state, session, e.sessions, iKey, "")
+	defer e.stopUnsolicitedReader(state)
+
+	sess.events <- Event{Type: EventResult, Content: "NO_REPLY", Done: true}
+	sess.events <- Event{Type: EventResult, Content: "done\nNO_REPLY", Done: true}
+
+	waitForPlatformSend(p, 1, 5*time.Second)
+	time.Sleep(200 * time.Millisecond)
+	sent := p.getSent()
+	if len(sent) != 1 || sent[0] != "done" {
+		t.Fatalf("sent = %q, want only [\"done\"]", sent)
+	}
+}
