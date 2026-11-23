@@ -887,6 +887,22 @@ func TestSaveAgentModel(t *testing.T) {
 	}
 }
 
+func TestSaveAgentReasoningEffort(t *testing.T) {
+	writeTestConfig(t, providerConfigTOML)
+
+	if err := SaveAgentReasoningEffort("demo", "high"); err != nil {
+		t.Fatalf("SaveAgentReasoningEffort() error: %v", err)
+	}
+
+	cfg := readTestConfig(t)
+	if got, _ := cfg.Projects[0].Agent.Options["reasoning_effort"].(string); got != "high" {
+		t.Fatalf("agent.options.reasoning_effort = %q, want high", got)
+	}
+	if got, _ := cfg.Projects[0].Agent.Options["mode"].(string); got != "default" {
+		t.Fatalf("agent.options.mode = %q, want default", got)
+	}
+}
+
 const providerConfigWithCommentsTOML = `# This is my config file
 # Very important - do not lose this!
 custom_top = "keep_me"

@@ -377,6 +377,7 @@ type Engine struct {
 	providerRefsSaveFunc    func(refs []string) error
 	listGlobalProvidersFunc func(agentType string) ([]ProviderConfig, error)
 	modelSaveFunc           func(model string) error
+	reasoningEffortSaveFunc func(effort string) error
 
 	ttsSaveFunc func(mode string) error
 
@@ -1133,6 +1134,10 @@ func (e *Engine) SetListGlobalProvidersFunc(fn func(agentType string) ([]Provide
 
 func (e *Engine) SetModelSaveFunc(fn func(model string) error) {
 	e.modelSaveFunc = fn
+}
+
+func (e *Engine) SetReasoningEffortSaveFunc(fn func(effort string) error) {
+	e.reasoningEffortSaveFunc = fn
 }
 
 // AddPlatform appends a platform to the engine after construction.
@@ -10802,6 +10807,11 @@ func (e *Engine) cmdReasoning(p Platform, msg *Message, args []string) {
 		return
 	}
 
+	if agent == e.agent && e.reasoningEffortSaveFunc != nil {
+		if err := e.reasoningEffortSaveFunc(target); err != nil {
+			slog.Warn("failed to persist reasoning_effort", "error", err)
+		}
+	}
 	switcher.SetReasoningEffort(target)
 	e.cleanupInteractiveState(e.interactiveKeyForSessionKey(msg.SessionKey))
 
@@ -13214,6 +13224,11 @@ func (e *Engine) executeCardAction(cmd, args, sessionKey string) {
 		}
 		for _, effort := range efforts {
 			if effort == target {
+				if agent == e.agent && e.reasoningEffortSaveFunc != nil {
+					if err := e.reasoningEffortSaveFunc(target); err != nil {
+						slog.Warn("failed to persist reasoning_effort", "error", err)
+					}
+				}
 				switcher.SetReasoningEffort(target)
 				e.cleanupInteractiveState(interactiveKey)
 				s := sessions.GetOrCreateActive(sessionKey)

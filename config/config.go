@@ -1382,6 +1382,14 @@ func SaveAgentModel(projectName, model string) error {
 	return patchProjectAgentOption(projectName, "model", model)
 }
 
+// SaveAgentReasoningEffort persists the selected default reasoning effort for a project's agent.
+// It uses surgical text editing to preserve comments and unknown fields.
+func SaveAgentReasoningEffort(projectName, effort string) error {
+	configMu.Lock()
+	defer configMu.Unlock()
+	return patchProjectAgentOption(projectName, "reasoning_effort", effort)
+}
+
 // AddProviderToConfig adds a provider to a project's agent config and saves.
 func AddProviderToConfig(projectName string, provider ProviderConfig) error {
 	configMu.Lock()

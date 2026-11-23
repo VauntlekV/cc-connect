@@ -12,6 +12,7 @@
 - ACP：本轮结束后才到的回复（如 agy 后台任务完成后继续说话）等 1.5 秒没有新内容再作为一条消息发出（上游逐块各发一条）。
 - ACP：配置里的 `reasoning_effort` 正确显示在页脚（上游会显示成第一档 low）。
 - `quiet` 模式下流式预览 `appendSeparator` 去重：连续多次工具调用或思考分片不再重复叠加 `\n\n` 空行。
+- `/reasoning` 切换思考等级时持久化写回 `config.toml` 的 `reasoning_effort`（重启不再回退为旧值）。
 
 **Relay**
 - `relay send` 默认在目标 bot 上新开会话，加 `--resume` 才续上次的 relay 对话。
