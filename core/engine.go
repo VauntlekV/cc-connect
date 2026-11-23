@@ -338,6 +338,7 @@ type DisplayCfg struct {
 	ToolMessages     bool
 	HistoryMaxLen    *int // max runes for /history entries; nil = default, 0 = no truncation
 	HideAgentFooter  bool // strip model/token footer lines emitted as agent text
+	HideToolResults  bool // LOCAL PATCH: hide tool result messages, keep tool-use
 }
 
 // InstantReplyCfg controls the immediate confirmation reply sent when a message
@@ -5948,7 +5949,9 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 				if previewActive {
 					sp.detachPreview() // keep frozen preview visible as permanent message
 				}
-				toolInput := event.ToolInput
+				// LOCAL PATCH tool-input-truncate: apply tool_max_len to the
+				// standalone tool-use message too (upstream only truncates the card payload).
+				toolInput := truncateIf(event.ToolInput, e.display.ToolMaxLen)
 				var formattedInput string
 				if toolInput == "" {
 					formattedInput = ""
@@ -5978,7 +5981,7 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 			}
 
 		case EventToolResult:
-			if e.display.ToolMessages {
+			if e.display.ToolMessages && !e.display.HideToolResults {
 				result := strings.TrimSpace(event.ToolResult)
 				if result == "" {
 					result = strings.TrimSpace(event.Content)

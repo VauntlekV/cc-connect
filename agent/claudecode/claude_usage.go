@@ -273,12 +273,19 @@ func nextClaudeUsageProbeAction(screen string, state *claudeUsageProbeState, now
 	return ""
 }
 
+var claudeTrustCursorOnNoRe = regexp.MustCompile(`❯\s*(?:\d\.\s*)?no,\s*exit`)
+
 func promptActionForScreen(screen string) string {
 	lower := strings.ToLower(screen)
 	if lower == "" {
 		return ""
 	}
 	if strings.Contains(lower, "quick safety check") || strings.Contains(lower, "yes, i trust this folder") {
+		// LOCAL PATCH (claude-usage-trust): newer Claude Code lists "No, exit" first
+		// with the cursor on it, so a bare Enter quits. Move down to "Yes" first.
+		if claudeTrustCursorOnNoRe.MatchString(lower) {
+			return "\x1b[B\r"
+		}
 		return "\r"
 	}
 	if (strings.Contains(lower, "telemetry") || strings.Contains(lower, "help improve") || strings.Contains(lower, "usage data")) &&
@@ -602,6 +609,13 @@ func (t *claudeUsageTerminal) applyCSI(params string, final byte) {
 				t.col = 0
 			}
 		}
+	case 'G', '`':
+		// LOCAL PATCH (claude-usage-trust): cursor horizontal absolute. Newer Claude Code
+		// positions words with CSI n G instead of writing spaces.
+		t.col = parseCSIInt(params, 1) - 1
+	case 'd':
+		t.row = parseCSIInt(params, 1) - 1
+		t.ensureRow(t.row)
 	case 'H', 'f':
 		row, col := parseCSICursor(params)
 		if row < 0 {
