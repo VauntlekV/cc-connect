@@ -609,3 +609,33 @@ func TestStreamPreview_UnfreezeIdempotent(t *testing.T) {
 		t.Fatal("canPreview() = false after no-op unfreeze, want true")
 	}
 }
+
+func TestStreamPreview_AppendSeparatorDeduplicates(t *testing.T) {
+	mp := &mockUpdaterPlatform{}
+	sp := newStreamPreview(DefaultStreamPreviewCfg(), mp, "ctx", context.Background(), nil)
+
+	if sp.appendSeparator("\n\n") {
+		t.Fatal("appendSeparator on empty fullText = true, want false")
+	}
+	sp.appendText("step 1")
+	if !sp.appendSeparator("\n\n") {
+		t.Fatal("first appendSeparator = false, want true")
+	}
+	if sp.appendSeparator("\n\n") {
+		t.Fatal("duplicate appendSeparator = true, want false")
+	}
+	if sp.appendSeparator("") {
+		t.Fatal("empty appendSeparator = true, want false")
+	}
+	sp.appendText("step 2")
+	if !sp.appendSeparator("\n\n") {
+		t.Fatal("appendSeparator after new text = false, want true")
+	}
+
+	sp.mu.Lock()
+	got := sp.fullText
+	sp.mu.Unlock()
+	if got != "step 1\n\nstep 2\n\n" {
+		t.Fatalf("fullText = %q, want %q", got, "step 1\n\nstep 2\n\n")
+	}
+}

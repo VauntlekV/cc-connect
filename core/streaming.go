@@ -552,7 +552,7 @@ func (sp *streamPreview) detachPreview() {
 func (sp *streamPreview) appendSeparator(sep string) bool {
 	sp.mu.Lock()
 	defer sp.mu.Unlock()
-	if sp.degraded || !sp.cfg.Enabled || sp.fullText == "" {
+	if sp.degraded || !sp.cfg.Enabled || sp.fullText == "" || sep == "" || strings.HasSuffix(sp.fullText, sep) {
 		return false
 	}
 	sp.fullText += sep
