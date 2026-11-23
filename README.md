@@ -9,6 +9,9 @@
 - `[display] hide_tool_results = true`：隐藏工具结果消息，保留工具调用消息。
 - 独立的工具调用消息也按 `tool_max_len` 截断（上游只截断卡片里的）。
 
+- 后台任务在本轮结束后才产出的消息（如 ACP 后台任务）也遵守 `NO_REPLY`。
+- ACP：配置里的 `reasoning_effort` 正确显示在页脚（上游会显示成第一档 low）。
+
 **Relay**
 - `relay send` 默认在目标 bot 上新开会话，加 `--resume` 才续上次的 relay 对话。
 - `relay send --async`：立即返回；对方完成后，回复以「[relay 回信]」开头作为新消息注入发起方会话（会话忙时每 5 秒重试，最多 1 小时）。
